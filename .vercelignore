@@ -1,0 +1,10 @@
+
+node_modules
+.git
+.replit
+.env
+uploads
+bots
+*.log
+dist
+.next
