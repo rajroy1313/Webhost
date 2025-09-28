@@ -68,15 +68,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const user = await storage.getUserByEmail(credentials.email);
       if (!user) {
+        console.log("User not found for email:", credentials.email);
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
+      console.log("User found, comparing passwords");
       const isValidPassword = await bcrypt.compare(credentials.password, user.password);
       if (!isValidPassword) {
+        console.log("Password comparison failed");
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
       req.session.userId = user.id;
+      console.log("Login successful for user:", user.email);
       
       res.json({ 
         user: { 
@@ -86,6 +90,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } 
       });
     } catch (error) {
+      console.error("Login error:", error);
       res.status(400).json({ message: "Invalid login data" });
     }
   });
