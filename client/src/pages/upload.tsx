@@ -10,16 +10,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Navbar } from "@/components/navbar";
 import { Sidebar } from "@/components/sidebar";
 import { FileUpload } from "@/components/file-upload";
+import { GitHubRepoInput } from "@/components/github-repo-input";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
-import { Rocket, Plus, X } from "lucide-react";
+import { Rocket, Plus, X, Upload as UploadIcon, GitBranch } from "lucide-react";
 
 export default function Upload() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const [deploymentMethod, setDeploymentMethod] = useState<"file" | "github">("file");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [githubRepo, setGithubRepo] = useState("");
+  const [isRepoValid, setIsRepoValid] = useState(false);
+  const [repoInfo, setRepoInfo] = useState<any>(null);
   const [botName, setBotName] = useState("");
   const [botDescription, setBotDescription] = useState("");
   const [runtime, setRuntime] = useState("");
@@ -30,37 +35,58 @@ export default function Upload() {
 
   const uploadMutation = useMutation({
     mutationFn: async (data: {
-      file: File;
+      file?: File;
       config: any;
+      repositoryUrl?: string;
     }) => {
-      const formData = new FormData();
-      formData.append("file", data.file);
-      formData.append("config", JSON.stringify(data.config));
+      if (data.file) {
+        // File upload
+        const formData = new FormData();
+        formData.append("file", data.file);
+        formData.append("config", JSON.stringify(data.config));
 
-      const response = await fetch("/api/bots/upload", {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
+        const response = await fetch("/api/bots/upload", {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message);
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message);
+        }
+
+        return response.json();
+      } else if (data.repositoryUrl) {
+        // GitHub deployment
+        const response = await fetch("/api/bots/github", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ repositoryUrl: data.repositoryUrl, ...data.config }),
+          credentials: "include",
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message);
+        }
+
+        return response.json();
       }
 
-      return response.json();
+      throw new Error("No file or repository provided");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bots"] });
       toast({
-        title: "Bot uploaded successfully!",
+        title: "Bot deployed successfully!",
         description: "Your bot has been deployed and is ready to use.",
       });
       setLocation("/dashboard");
     },
     onError: (error) => {
       toast({
-        title: "Upload failed",
+        title: "Deployment failed",
         description: error instanceof Error ? error.message : "An error occurred",
         variant: "destructive",
       });
@@ -70,10 +96,19 @@ export default function Upload() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedFile) {
+    if (deploymentMethod === "file" && !selectedFile) {
       toast({
         title: "No file selected",
         description: "Please select a file to upload.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (deploymentMethod === "github" && (!githubRepo || !isRepoValid)) {
+      toast({
+        title: "Invalid repository",
+        description: "Please provide a valid GitHub repository URL.",
         variant: "destructive",
       });
       return;
@@ -95,18 +130,27 @@ export default function Upload() {
       return acc;
     }, {} as Record<string, string>);
 
-    uploadMutation.mutate({
-      file: selectedFile,
-      config: {
-        name: botName,
-        description: botDescription,
-        runtime,
-        startCommand,
-        category: category || undefined,
-        envVariables,
-        isPublic,
-      },
-    });
+    const config = {
+      name: botName,
+      description: botDescription,
+      runtime,
+      startCommand,
+      category: category || undefined,
+      envVariables,
+      isPublic,
+    };
+
+    if (deploymentMethod === "file") {
+      uploadMutation.mutate({
+        file: selectedFile!,
+        config,
+      });
+    } else {
+      uploadMutation.mutate({
+        repositoryUrl: githubRepo,
+        config,
+      });
+    }
   };
 
   const addEnvVar = () => {
@@ -142,14 +186,75 @@ export default function Upload() {
             <CardContent>
               <form onSubmit={handleSubmit}>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {/* File Upload */}
+                  {/* Deployment Method Selection */}
                   <div>
-                    <h4 className="text-sm font-medium text-foreground mb-4">Bot Files</h4>
-                    <FileUpload
-                      onFileSelect={setSelectedFile}
-                      selectedFile={selectedFile || undefined}
-                      onRemoveFile={() => setSelectedFile(null)}
-                    />
+                    <h4 className="text-sm font-medium text-foreground mb-4">Deployment Method</h4>
+                    
+                    {/* Method Toggle */}
+                    <div className="flex p-1 bg-muted rounded-lg mb-4">
+                      <button
+                        type="button"
+                        onClick={() => setDeploymentMethod("file")}
+                        className={`flex-1 flex items-center justify-center py-2 px-3 rounded-md text-sm font-medium transition-all ${
+                          deploymentMethod === "file"
+                            ? "bg-background text-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                        data-testid="tab-file-upload"
+                      >
+                        <UploadIcon className="w-4 h-4 mr-2" />
+                        File Upload
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeploymentMethod("github")}
+                        className={`flex-1 flex items-center justify-center py-2 px-3 rounded-md text-sm font-medium transition-all ${
+                          deploymentMethod === "github"
+                            ? "bg-background text-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                        data-testid="tab-github-repo"
+                      >
+                        <GitBranch className="w-4 h-4 mr-2" />
+                        GitHub Repository
+                      </button>
+                    </div>
+
+                    {/* File Upload */}
+                    {deploymentMethod === "file" && (
+                      <FileUpload
+                        onFileSelect={setSelectedFile}
+                        selectedFile={selectedFile || undefined}
+                        onRemoveFile={() => setSelectedFile(null)}
+                      />
+                    )}
+
+                    {/* GitHub Repository */}
+                    {deploymentMethod === "github" && (
+                      <GitHubRepoInput
+                        value={githubRepo}
+                        onChange={setGithubRepo}
+                        onValidation={(valid, info) => {
+                          setIsRepoValid(valid);
+                          setRepoInfo(info);
+                          if (valid && info) {
+                            // Auto-fill some fields from repo info
+                            if (!botName && info.name) setBotName(info.name);
+                            if (!botDescription && info.description) setBotDescription(info.description);
+                            if (!runtime && info.language) {
+                              const languageMap: Record<string, string> = {
+                                JavaScript: "Node.js 18",
+                                TypeScript: "Node.js 18",
+                                Python: "Python 3.11",
+                                "Jupyter Notebook": "Python 3.11",
+                              };
+                              const detectedRuntime = languageMap[info.language];
+                              if (detectedRuntime) setRuntime(detectedRuntime);
+                            }
+                          }
+                        }}
+                      />
+                    )}
                   </div>
 
                   {/* Configuration */}

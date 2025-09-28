@@ -7,6 +7,9 @@ import bcrypt from "bcrypt";
 import { storage } from "./storage";
 import { sessionMiddleware, requireAuth, getCurrentUser } from "./middleware/auth";
 import { botManager } from "./services/botManager";
+import { validateRepository, downloadRepository } from "./services/githubClient";
+import https from "https";
+import AdmZip from "adm-zip";
 import { insertUserSchema, insertBotSchema, loginSchema } from "@shared/schema";
 
 const upload = multer({
@@ -161,6 +164,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(bot);
     } catch (error) {
       res.status(400).json({ message: "Failed to upload bot" });
+    }
+  });
+
+  app.post("/api/bots/github", requireAuth, async (req, res) => {
+    try {
+      const { repositoryUrl, ...botData } = req.body;
+      
+      if (!repositoryUrl) {
+        return res.status(400).json({ message: "Repository URL is required" });
+      }
+
+      // Validate repository
+      const validation = await validateRepository(repositoryUrl);
+      if (!validation.valid) {
+        return res.status(400).json({ message: validation.error });
+      }
+
+      const parsedBotData = insertBotSchema.parse(botData);
+      
+      // Create bot directory
+      const botDir = path.join("bots", (req as any).user.id, Date.now().toString());
+      fs.mkdirSync(botDir, { recursive: true });
+      
+      // Download repository archive
+      const archiveData = await downloadRepository(repositoryUrl, botDir);
+      
+      // Save archive and extract
+      const archivePath = path.join(botDir, "repository.zip");
+      fs.writeFileSync(archivePath, archiveData as any, 'binary');
+      
+      // Extract the archive
+      const zip = new AdmZip(archivePath);
+      zip.extractAllTo(botDir, true);
+      
+      // Remove the zip file
+      fs.unlinkSync(archivePath);
+      
+      // Find the extracted folder (GitHub archives create a folder with commit hash)
+      const extractedFolders = fs.readdirSync(botDir).filter(item => 
+        fs.statSync(path.join(botDir, item)).isDirectory()
+      );
+      
+      let mainDir = botDir;
+      if (extractedFolders.length > 0) {
+        mainDir = path.join(botDir, extractedFolders[0]);
+      }
+      
+      const bot = await storage.createBot({
+        ...parsedBotData,
+        userId: (req as any).user.id,
+        filePath: mainDir,
+      });
+
+      res.json(bot);
+    } catch (error: any) {
+      console.error("GitHub deployment error:", error);
+      res.status(500).json({ message: error.message || "Failed to deploy from GitHub" });
+    }
+  });
+
+  app.post("/api/github/validate", requireAuth, async (req, res) => {
+    try {
+      const { repositoryUrl } = req.body;
+      
+      if (!repositoryUrl) {
+        return res.status(400).json({ message: "Repository URL is required" });
+      }
+
+      const validation = await validateRepository(repositoryUrl);
+      res.json(validation);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to validate repository" });
     }
   });
 
