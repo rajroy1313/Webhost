@@ -4,10 +4,7 @@
   "outputDirectory": "client/dist",
   "devCommand": "npm run dev",
   "installCommand": "npm install",
-  "framework": null,
-  "functions": {
-    "api/index.ts": {
-    }
+  "framework": null
   },
   "rewrites": [
     {
