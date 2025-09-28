@@ -16,7 +16,6 @@ export default function Gallery() {
 
   const { data: bots = [], isLoading } = useQuery<Bot[]>({
     queryKey: ["/api/gallery", searchQuery, selectedCategory],
-    queryKey: ["/api/gallery"] as const,
   });
 
   const categories = ["All Categories", "Music", "Moderation", "Games", "Utility", "Fun"];

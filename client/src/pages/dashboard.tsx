@@ -29,7 +29,7 @@ export default function Dashboard() {
     queryKey: ["/api/bots"],
   });
 
-  const { data: stats } = useQuery({
+  const { data: stats = { activeBots: 0, totalBots: 0, avgCpuUsage: 0, uptime: 99.9 } } = useQuery({
     queryKey: ["/api/stats"],
   });
 
@@ -140,7 +140,7 @@ export default function Dashboard() {
                     <div>
                       <p className="text-muted-foreground text-sm font-medium">Active Bots</p>
                       <p className="text-2xl font-bold text-foreground mt-2" data-testid="stat-active-bots">
-                        {stats?.activeBots || 0}
+                        {stats.activeBots}
                       </p>
                     </div>
                     <div className="p-3 bg-green-500/20 rounded-lg">
@@ -149,7 +149,7 @@ export default function Dashboard() {
                   </div>
                   <div className="mt-4">
                     <span className="text-green-400 text-sm font-medium">
-                      {stats?.activeBots > 0 ? "Running smoothly" : "No active bots"}
+                      {stats.activeBots > 0 ? "Running smoothly" : "No active bots"}
                     </span>
                   </div>
                 </CardContent>
@@ -161,7 +161,7 @@ export default function Dashboard() {
                     <div>
                       <p className="text-muted-foreground text-sm font-medium">Total Bots</p>
                       <p className="text-2xl font-bold text-foreground mt-2" data-testid="stat-total-bots">
-                        {stats?.totalBots || 0}
+                        {stats.totalBots}
                       </p>
                     </div>
                     <div className="p-3 bg-blue-500/20 rounded-lg">
@@ -180,7 +180,7 @@ export default function Dashboard() {
                     <div>
                       <p className="text-muted-foreground text-sm font-medium">Avg CPU Usage</p>
                       <p className="text-2xl font-bold text-foreground mt-2" data-testid="stat-cpu-usage">
-                        {stats?.avgCpuUsage || 0}%
+                        {stats.avgCpuUsage}%
                       </p>
                     </div>
                     <div className="p-3 bg-yellow-500/20 rounded-lg">
@@ -189,7 +189,7 @@ export default function Dashboard() {
                   </div>
                   <div className="mt-4">
                     <span className="text-yellow-400 text-sm font-medium">
-                      {(stats?.avgCpuUsage || 0) < 50 ? "Normal usage" : "High usage"}
+                      {stats.avgCpuUsage < 50 ? "Normal usage" : "High usage"}
                     </span>
                   </div>
                 </CardContent>
@@ -201,7 +201,7 @@ export default function Dashboard() {
                     <div>
                       <p className="text-muted-foreground text-sm font-medium">Uptime</p>
                       <p className="text-2xl font-bold text-foreground mt-2" data-testid="stat-uptime">
-                        {stats?.uptime || 99.9}%
+                        {stats.uptime}%
                       </p>
                     </div>
                     <div className="p-3 bg-green-500/20 rounded-lg">
