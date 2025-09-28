@@ -1,5 +1,6 @@
-import { type User, type InsertUser, type Bot, type InsertBot } from "@shared/schema";
-import { randomUUID } from "crypto";
+import { db } from "./db";
+import { users, bots, type User, type InsertUser, type Bot, type InsertBot } from "@shared/schema";
+import { eq, and, or, ilike } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -18,111 +19,78 @@ export interface IStorage {
   searchBots(query: string, category?: string): Promise<Bot[]>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-  private bots: Map<string, Bot>;
-
-  constructor() {
-    this.users = new Map();
-    this.bots = new Map();
-  }
-
+export class PostgreSQLStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    return result[0];
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.email === email,
-    );
+    const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    return result[0];
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const result = await db.select().from(users).where(eq(users.username, username)).limit(1);
+    return result[0];
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { 
-      ...insertUser, 
-      id,
-      createdAt: new Date()
-    };
-    this.users.set(id, user);
-    return user;
+    const result = await db.insert(users).values(insertUser).returning();
+    return result[0];
   }
 
   async getBot(id: string): Promise<Bot | undefined> {
-    return this.bots.get(id);
+    const result = await db.select().from(bots).where(eq(bots.id, id)).limit(1);
+    return result[0];
   }
 
   async getBotsByUserId(userId: string): Promise<Bot[]> {
-    return Array.from(this.bots.values()).filter(
-      (bot) => bot.userId === userId,
-    );
+    return await db.select().from(bots).where(eq(bots.userId, userId));
   }
 
   async getPublicBots(): Promise<Bot[]> {
-    return Array.from(this.bots.values()).filter(
-      (bot) => bot.isPublic === true,
-    );
+    return await db.select().from(bots).where(eq(bots.isPublic, true));
   }
 
   async createBot(botData: InsertBot & { userId: string; filePath: string }): Promise<Bot> {
-    const id = randomUUID();
-    const bot: Bot = {
-      ...botData,
-      description: botData.description || null,
-      id,
-      status: "stopped",
-      processId: null,
-      cpuUsage: 0,
-      memoryUsage: 0,
-      uptime: 0,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    this.bots.set(id, bot);
-    return bot;
+    const result = await db.insert(bots).values(botData).returning();
+    return result[0];
   }
 
   async updateBot(id: string, updates: Partial<Bot>): Promise<Bot | undefined> {
-    const bot = this.bots.get(id);
-    if (!bot) return undefined;
-    
-    const updatedBot = { ...bot, ...updates, updatedAt: new Date() };
-    this.bots.set(id, updatedBot);
-    return updatedBot;
+    const result = await db.update(bots)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(bots.id, id))
+      .returning();
+    return result[0];
   }
 
   async deleteBot(id: string): Promise<boolean> {
-    return this.bots.delete(id);
+    const result = await db.delete(bots).where(eq(bots.id, id)).returning();
+    return result.length > 0;
   }
 
   async searchBots(query: string, category?: string): Promise<Bot[]> {
-    const bots = Array.from(this.bots.values()).filter(
-      (bot) => bot.isPublic === true,
-    );
-
-    let filtered = bots;
+    let whereClause = eq(bots.isPublic, true);
 
     if (query) {
-      const lowercaseQuery = query.toLowerCase();
-      filtered = filtered.filter(
-        (bot) =>
-          bot.name.toLowerCase().includes(lowercaseQuery) ||
-          bot.description?.toLowerCase().includes(lowercaseQuery),
+      whereClause = and(
+        whereClause,
+        or(
+          ilike(bots.name, `%${query}%`),
+          ilike(bots.description, `%${query}%`)
+        )
       );
     }
 
-    if (category && category !== "All Categories") {
-      filtered = filtered.filter((bot) => bot.category === category);
+    if (category) {
+      whereClause = and(whereClause, eq(bots.category, category));
     }
 
-    return filtered;
+    return await db.select().from(bots).where(whereClause);
   }
 }
 
-export const storage = new MemStorage();
+// Export storage instance
+export const storage = new PostgreSQLStorage();
